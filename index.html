@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="manifest" href="manifest.json">
+    <meta charset="UTF-8">
+    <title>Classroom Noise Monitor</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f8f9fa; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; width: 400px; }
+        
+        /* The Counter Box */
+        .counter-box { font-size: 3rem; font-weight: bold; color: #dc3545; margin: 10px 0; border: 2px dashed #dc3545; border-radius: 10px; padding: 10px; }
+        .label { font-size: 0.9rem; text-transform: uppercase; color: #666; letter-spacing: 1px; }
+
+        #meter-container { width: 100%; height: 30px; background: #eee; border-radius: 15px; overflow: hidden; margin: 20px 0; }
+        #filler { width: 0%; height: 100%; background: #2ed573; transition: width 0.1s; }
+        
+        .controls button { padding: 12px 20px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; margin: 5px; transition: 0.2s; }
+        #startBtn { background: #28a745; color: white; }
+        #stopBtn { background: #6c757d; color: white; }
+        #resetBtn { background: #f1f1f1; color: #333; font-size: 0.8rem; }
+        #status { font-size: 1.1rem; margin-bottom: 5px; height: 1.5rem; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Silent Sentinel</h1>
+        
+        <div class="label">Over-Limit Strikes</div>
+        <div id="strikeDisplay" class="counter-box">0</div>
+        
+        <div id="status">Status: Ready</div>
+        <div id="meter-container">
+            <div id="filler"></div>
+        </div>
+
+        <div class="controls">
+            <p>Sensitivity: <input type="range" id="threshold" min="0" max="100" value="45"></p>
+            <button id="startBtn">Start</button>
+            <button id="stopBtn" disabled>Stop</button>
+            <br>
+            <button id="resetBtn">Reset Strikes</button>
+        </div>
+    </div>
+
+    <script>
+        let audioContext, stream, analyzer, animationId;
+        let strikes = 0;
+        let isOverLimit = false; // Prevents one loud noise from counting as 100 strikes
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const strikeDisplay = document.getElementById('strikeDisplay');
+        const filler = document.getElementById('filler');
+        const status = document.getElementById('status');
+        const thresholdInput = document.getElementById('threshold');
+
+        async function startMonitoring() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyzer = audioContext.createAnalyser();
+                analyzer.fftSize = 256;
+                source.connect(analyzer);
+
+                const dataArray = new Uint8Array(analyzer.frequencyBinCount);
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+
+                function update() {
+                    analyzer.getByteFrequencyData(dataArray);
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                    let volume = Math.min((sum / dataArray.length) * 2.5, 100);
+
+                    filler.style.width = volume + "%";
+                    const limit = parseInt(thresholdInput.value);
+
+                    if (volume > limit) {
+                        filler.style.background = "#ff4757";
+                        status.innerText = "TOO LOUD!";
+                        status.style.color = "#ff4757";
+                        
+                        // Increment strike ONLY once per "loud event"
+                        if (!isOverLimit) {
+                            strikes++;
+                            strikeDisplay.innerText = strikes;
+                            isOverLimit = true; 
+                        }
+                    } else {
+                        isOverLimit = false; // Reset so next loud sound can count
+                        if (volume > limit * 0.7) {
+                            filler.style.background = "#ffa502";
+                            status.innerText = "Warning...";
+                        } else {
+                            filler.style.background = "#2ed573";
+                            status.innerText = "Perfectly Quiet";
+                            status.style.color = "#2f3542";
+                        }
+                    }
+                    animationId = requestAnimationFrame(update);
+                }
+                update();
+            } catch (err) { alert("Mic access required."); }
+        }
+
+        function stopMonitoring() {
+            cancelAnimationFrame(animationId);
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            if (audioContext) audioContext.close();
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            status.innerText = "Monitor Paused";
+        }
+
+        resetBtn.onclick = () => {
+            strikes = 0;
+            strikeDisplay.innerText = "0";
+        };
+
+        startBtn.onclick = startMonitoring;
+        stopBtn.onclick = stopMonitoring;
+        
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
