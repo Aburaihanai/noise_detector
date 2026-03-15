@@ -3,63 +3,81 @@
 <head>
     <link rel="manifest" href="manifest.json">
     <meta charset="UTF-8">
-    <title>Classroom Noise Monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noise Detector - Group Project</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f8f9fa; margin: 0; }
-        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; width: 400px; }
+        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #f8f9fa; margin: 0; padding: 20px; }
+        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; width: 100%; max-width: 400px; }
         
-        /* The Counter Box */
-        .counter-box { font-size: 3rem; font-weight: bold; color: #dc3545; margin: 10px 0; border: 2px dashed #dc3545; border-radius: 10px; padding: 10px; }
-        .label { font-size: 0.9rem; text-transform: uppercase; color: #666; letter-spacing: 1px; }
+        .group-list { text-align: left; background: #f1f3f5; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
+        .group-list h3 { margin-top: 0; font-size: 1rem; color: #444; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        .group-list p { margin: 5px 0; font-size: 0.9rem; color: #666; }
 
-        #meter-container { width: 100%; height: 30px; background: #eee; border-radius: 15px; overflow: hidden; margin: 20px 0; }
+        h1 { font-size: 1.5rem; color: #333; margin-top: 0; }
+        #status { font-size: 1.1rem; margin-bottom: 10px; font-weight: bold; height: 1.5rem; }
+        
+        #meter-container { width: 100%; height: 30px; background: #eee; border-radius: 15px; overflow: hidden; margin: 20px 0; border: 1px solid #ddd; }
         #filler { width: 0%; height: 100%; background: #2ed573; transition: width 0.1s; }
         
-        .controls button { padding: 12px 20px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; margin: 5px; transition: 0.2s; }
-        #startBtn { background: #28a745; color: white; }
-        #stopBtn { background: #6c757d; color: white; }
-        #resetBtn { background: #f1f1f1; color: #333; font-size: 0.8rem; }
-        #status { font-size: 1.1rem; margin-bottom: 5px; height: 1.5rem; }
+        .controls { margin-top: 10px; }
+        .controls button { padding: 12px 25px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; margin: 5px; transition: 0.2s; }
+        #startButton { background: #28a745; color: white; }
+        #stopButton { background: #dc3545; color: white; }
+        #startButton:disabled, #stopButton:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .sensitivity-box { margin-top: 15px; background: #f8f9fa; padding: 10px; border-radius: 8px; }
+        input[type=range] { width: 100%; cursor: pointer; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h1>Silent Sentinel</h1>
-        
-        <div class="label">Over-Limit Strikes</div>
-        <div id="strikeDisplay" class="counter-box">0</div>
+        <div class="group-list">
+            <h3>Project Group Members</h3>
+            <p>1. Bashir Nuhu Yagayaga</p>
+            <p>2. Abdul'hafeez Jimoh</p>
+            <p>3. Halimatu Yusuf Dauda</p>
+            <p>4. Iklima Abdullahi</p>
+            <p>5. Amina Auwal</p>
+        </div>
+
+        <h1>Noise Detector</h1>
         
         <div id="status">Status: Ready</div>
+        
         <div id="meter-container">
             <div id="filler"></div>
         </div>
 
-        <div class="controls">
-            <p>Sensitivity: <input type="range" id="threshold" min="0" max="100" value="45"></p>
-            <button id="startBtn">Start</button>
-            <button id="stopBtn" disabled>Stop</button>
-            <br>
-            <button id="resetBtn">Reset Strikes</button>
+        <div class="sensitivity-box">
+            <label>Sensitivity Threshold</label>
+            <input type="range" id="threshold" min="0" max="100" value="45">
         </div>
+
+        <div class="controls">
+            <button id="startButton">Start</button>
+            <button id="stopButton" disabled>Stop</button>
+        </div>
+
+        <audio id="alarmSound" src="Burglar_Alarm_4.mp3" preload="auto" loop></audio>
     </div>
 
     <script>
         let audioContext, stream, analyzer, animationId;
-        let strikes = 0;
-        let isOverLimit = false; // Prevents one loud noise from counting as 100 strikes
 
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const resetBtn = document.getElementById('resetBtn');
-        const strikeDisplay = document.getElementById('strikeDisplay');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
         const filler = document.getElementById('filler');
         const status = document.getElementById('status');
         const thresholdInput = document.getElementById('threshold');
+        const alarm = document.getElementById('alarmSound');
 
         async function startMonitoring() {
             try {
+                // Request Mic Access
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Initialize Audio API
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const source = audioContext.createMediaStreamSource(stream);
                 analyzer = audioContext.createAnalyser();
@@ -67,65 +85,86 @@
                 source.connect(analyzer);
 
                 const dataArray = new Uint8Array(analyzer.frequencyBinCount);
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
+                
+                // UI State
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                status.innerText = "Monitoring...";
 
                 function update() {
                     analyzer.getByteFrequencyData(dataArray);
+                    
+                    // Calculate Volume
                     let sum = 0;
                     for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-                    let volume = Math.min((sum / dataArray.length) * 2.5, 100);
+                    let volume = Math.min((sum / dataArray.length) * 1.2, 100);
 
                     filler.style.width = volume + "%";
                     const limit = parseInt(thresholdInput.value);
 
+                    // Noise Threshold Logic
                     if (volume > limit) {
-                        filler.style.background = "#ff4757";
+                        filler.style.background = "#ff4757"; // Red
                         status.innerText = "TOO LOUD!";
                         status.style.color = "#ff4757";
                         
-                        // Increment strike ONLY once per "loud event"
-                        if (!isOverLimit) {
-                            strikes++;
-                            strikeDisplay.innerText = strikes;
-                            isOverLimit = true; 
+                        // Start looping alarm if it's paused
+                        if (alarm.paused) {
+                            alarm.play().catch(e => console.log("Playback blocked", e));
                         }
                     } else {
-                        isOverLimit = false; // Reset so next loud sound can count
+                        // Stop and reset alarm if it's currently playing
+                        if (!alarm.paused) {
+                            alarm.pause();
+                            alarm.currentTime = 0; 
+                        }
+
                         if (volume > limit * 0.7) {
-                            filler.style.background = "#ffa502";
+                            filler.style.background = "#ffa502"; // Yellow
                             status.innerText = "Warning...";
+                            status.style.color = "#ffa502";
                         } else {
-                            filler.style.background = "#2ed573";
+                            filler.style.background = "#2ed573"; // Green
                             status.innerText = "Perfectly Quiet";
                             status.style.color = "#2f3542";
                         }
                     }
+
                     animationId = requestAnimationFrame(update);
                 }
                 update();
-            } catch (err) { alert("Mic access required."); }
+            } catch (err) { 
+                alert("Microphone access is required for this app to work."); 
+            }
         }
 
         function stopMonitoring() {
             cancelAnimationFrame(animationId);
-            if (stream) stream.getTracks().forEach(t => t.stop());
-            if (audioContext) audioContext.close();
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+            // Ensure alarm stops if active
+            alarm.pause();
+            alarm.currentTime = 0;
+
+            startButton.disabled = false;
+            stopButton.disabled = true;
             status.innerText = "Monitor Paused";
+            status.style.color = "#2f3542";
+            filler.style.width = "0%";
         }
 
-        resetBtn.onclick = () => {
-            strikes = 0;
-            strikeDisplay.innerText = "0";
-        };
-
-        startBtn.onclick = startMonitoring;
-        stopBtn.onclick = stopMonitoring;
+        startButton.onclick = startMonitoring;
+        stopButton.onclick = stopMonitoring;
         
+        // PWA Service Worker Registration
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => console.log('SW failed', err));
+            });
         }
     </script>
 </body>
